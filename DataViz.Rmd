@@ -1,0 +1,717 @@
+---
+title: "Data Visualization class"
+author: "Limor Raviv"
+date: "8 November 2018"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+# Basic settings (just trust me on this :P)
+options(scipen = 99999) 
+options(mc.cores=2) 
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Intoduction
+The following Rmarkdown document includes a detailed example of how to visualize and analyze data, plot regression models, calculate p-values and more.
+
+We'll use the "GSSvocab" dataset, which contains information from the General Social Survey (GSS) of the University of Chicago. It inlcudes vocabulary scores collected over the course of 20 years from over 28,000 people. We'll analyze the vocabulary scores by individuals' age, gender, education level and nativeness. 
+
+Feel free to reuse and edit any part of this document/code!
+
+# What's Rmarkdown?
+This is an R Markdown document. It basically combines text with R code (models, plots etc), and can be used to create beautiful HTMLs, PDFs, Word documents, slides and even websites. 
+
+When you click on the "Knit" button on top, it will generate a  document that includes all the specified content: this text, as well as the output of any embedded R code chunks within the document (unless you decide not to include it in your final output).
+
+For more details on using R Markdown see <http://rmarkdown.rstudio.com>. 
+
+I also recommend using this awesome cheat sheet: <https://github.com/rstudio/cheatsheets/raw/master/rmarkdown-2.0.pdf>
+
+## Text in Rmarkdown
+Text appears like this, on a white background.
+
+You can format the text to be **bold** or *italics*, and have it appear in different sizes by starting a line with hashtags:
+
+# for main headers
+## for subheaders
+### for subsubheaders 
+
+You can also use lists and bullet-points:
+
+1. This 
+2. is
+3. a list
+
+- and 
+- these
+- are
+- bullets
+
+And even write nice equations by using the dollar sign:
+$$ \frac{n!}{k!(n-k)!} = \binom{n}{k} $$
+
+
+## Code in Rmarkdown
+Chuncks of code appear in a grey box denoted by ``` at the begining and end, and have a curly-brackets header (see below). The code always starts with some name, and then some technical instructions (e.g., do you want to include the actual code in the document or just the output? Do you want to see warnings?). For example "echo=TRUE" means I want the code itself to appear in the final file (not just an output, if any). Check out the cheat sheet for more details.
+
+```{r exmaple code, echo=TRUE}
+
+example <- 1.987
+
+```
+
+You can also include some R code inside the text by using `r "your code in grave accents" `. For exmaple, 2 multiplied by 10 equals `r 2*10`. This can be used to integrate values from your enviroment (like beta-coefficients) in the actual text without the need to copy them, like the value from the exmaple above is `r example`.
+
+# Let's get started!
+For editing and running the code, please install and load the following packages first.
+
+*Note that "include=FALSE" here means that this chunck of code will not appear in  the final document.*
+
+```{r general_setup, include=FALSE, warning=FALSE, cache=TRUE}
+
+# Install the needed packages by uncommenting and running the code
+
+# TIP: use ctrl+shift+c for uncommenting/commenting a bunch of lines at once
+
+
+# install.packages("markdown") # Rmarkdown packages
+# install.packages("pander") # Rmarkdown packages
+# install.packages("knitr") # adding nice tables
+# install.packages("sjPlot") # table functions
+# install.packages("sjmisc") # table functions
+# install.packages("ggplot2") # making beautiful plots
+# install.packages("effects") # plotting models
+# install.packages("cowplot") # making paneled plots
+# install.packages("gganimate")  # animating plots
+# install.packages("tweenr") # animating plots
+# install.packages("plyr") # summarize data
+# install.packages("dplyr") # summarize data
+# install.packages("pbkrtest") # calculate p-values
+# install.packages("carData") # 
+# install.packages("lme4") # regression models (you shoul already have this package)
+
+# Load the needed packages
+library(markdown)
+library(pander)
+library(knitr)
+library(sjPlot) 
+library(sjmisc) 
+library(ggplot2) 
+library(effects) 
+library(cowplot) 
+library(gganimate)
+library(tweenr) 
+library(plyr) 
+library(dplyr) 
+library(pbkrtest) 
+library(carData)
+library(lme4)
+```
+
+## The dataset
+Now, let's load the dataset and play with it a bit to see what's going on.
+
+```{r load_data, echo=FALSE, cache=TRUE}
+
+data("GSSvocab")
+
+summary(GSSvocab) # look at the data
+
+levels(GSSvocab$nativeBorn) <- c("Non-native", "Native") # This is more informative than "yes"/"no"
+
+# Can you notice that:
+# - vocabulary scores range from 0 to 10
+# - There are many more native borns than non-natives
+
+# We can also take a look at our data, just to get a grip of our variables
+# Can you notice any intersting trends?
+
+
+table(GSSvocab$nativeBorn,GSSvocab$gender) # native born by gender
+
+table(GSSvocab$ageGroup,GSSvocab$gender) # age group by gender
+
+table(GSSvocab$educGroup,GSSvocab$gender) # education group by gender
+
+table(GSSvocab$ageGroup,GSSvocab$nativeBorn) # age group by native born
+
+table(GSSvocab$educGroup,GSSvocab$nativeBorn) # education group by native born
+
+table(GSSvocab$gender,GSSvocab$nativeBorn) # gender by native born
+
+table(GSSvocab$ageGroup,GSSvocab$educGroup) # age group by education group: what's the possible confound here?
+
+
+# ageGroup and educGroup are a binned variable based on age and educ. Since making continous variables into categorical variables is not good pracrtice (and also takes away from our model's power), we will not use them here.
+
+d<- GSSvocab[!is.na(GSSvocab$vocab),c(1:3,6:8)] # create a new data frame with only the wanted columns, remove all the lines where vocab score is n/a and give the data frame a shorter name (more convinient)
+
+no.years <- length(unique(d$year)) # check how many years of data collection are included in this dataset
+
+hist(d$vocab) # check that our data is normally distributed (this is a pre-condition for running a model)
+sd <- sd(d$vocab) # what's the standard deviation?
+
+
+```
+
+### Predictions?
+
+Before we ran any models and look at the data, what are your predictions? What do you think will affect vocabulary scores?
+
+**For each of these variables, write down: Do you think this variable matters? How so? Should it be a fixed effect or a random effect?**
+
+- year (of data collection)
+- gender
+- nativeBorn (in the USA)
+- age
+- educ (years of formal education)
+
+**Think: Do you expect any interactions?**
+For example, it's possible that being native to the US will moderate the effect of education and/or age.
+DO you think this relation will be further moderated by gender?
+
+
+## Plotting the data
+
+To examine our data, we can first plot it in different ways.
+
+
+Let's start by looking at the vocbulary scores over the years.
+
+Let's try this using a box plot:
+ 
+```{r plot6, echo=FALSE, cache=TRUE} 
+
+# vocab by year: box plot
+   ggplot()+ geom_boxplot(data=d,aes(x = year, y = vocab), size=2, alpha=0.7)+
+  scale_x_discrete("Year of data collection")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by year")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=10), legend.text = element_text(size = 15))
+```
+
+Not very useful. Maybe a violin plot?
+ 
+```{r plot7, echo=FALSE, cache=TRUE} 
+
+# violin plot  
+ggplot()+ geom_violin(data=d,aes(x = year, y = vocab), size=2, alpha=0.7)+
+  scale_x_discrete("Year of data collection")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by year")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=10), legend.text = element_text(size = 15))
+```
+
+Still not great. How about a bar plot?
+
+```{r plot8, echo=FALSE, cache=TRUE} 
+
+# bar plot
+  ggplot()+ geom_bar(data=d,aes(x = year, y = vocab), stat = "summary", fun.y = "mean", size=2, alpha=0.7)+
+  scale_x_discrete("Year of data collection")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by year")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=10), legend.text = element_text(size = 15))
+```
+
+Much better, but it's still hard to read. 
+
+Perhaps it's best to summarize the scores by year, and then plot the average - that's more clean and informative.
+
+```{r plot9, echo=FALSE, cache=TRUE} 
+
+# summarize vocabulary by year of data collection
+ d_sum_by_year<- ddply(d, .(year), summarise, vocab = mean(vocab,na.rm=TRUE)) 
+ d_sum_by_year$year <- as.numeric(as.character(d_sum_by_year$year)) # change year to be numeric
+
+  #this time, let's make a line plot (more suitable for showing the effect of time)
+ # line plot:
+  ggplot()+ geom_line(data=d_sum_by_year,aes(x = year, y = vocab), size=2, alpha=0.7)+
+  scale_x_continuous("Year of data collection")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by year")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+```
+
+
+We can even examine the relationship between age and vocabulary scores over the years to make sure it's consistent. We can try to do this with faceting by year:
+
+```{r plot10, echo=FALSE, warning=FALSE, cache=TRUE} 
+
+# summarize vocabulary by age and year 
+ d_sum_by_year2<- ddply(d, .(year, age), summarise, vocab = mean(vocab,na.rm=TRUE)) 
+ d_sum_by_year2$year <- as.numeric(as.character(d_sum_by_year2$year)) # change year to be numeric
+
+  # faceting by year
+  # (you may need to expand the window to see better)
+  ggplot()+ geom_line(data=d_sum_by_year2,aes(x = age, y = vocab), size=2, alpha=0.7)+facet_wrap(year ~. ,scales = "free")+
+  scale_x_continuous("Age")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by year and year")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+```
+
+
+But this is too hard to evaluate properly. It would be better to stack the lines on top of each other and color-code them by year, so we can actually see if there are any meaningful differences. We do this by adding "color=year" to the aes(). 
+
+Here, we also add the "group" variable to tell ggplot to give one line per year. You can check to see what happens if you remove this grouping!
+
+```{r plot11, echo=FALSE, warning=FALSE, cache=TRUE} 
+
+  # plot the relation between age and vocab by year
+  plot1<- ggplot()+ geom_line(data=d_sum_by_year2,aes(x = age, y = vocab, color=year, group=year), size=1, alpha=0.6)+
+  scale_x_continuous("Age")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by age and year")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+plot1
+
+  # you can also decide to treat "year" as a categorical value instead of a continous variable by adding factor(year). This will give a different color to each year (instead of a differnt blue hue). In our case it's a bit too much (we have 20 different years) and actually uneeded (because the years ARE continous), but this could be useful in other occasions. 
+  ggplot()+ geom_line(data=d_sum_by_year2,aes(x = age, y = vocab, color=factor(year), group=year), size=1, alpha=0.8)+
+  scale_x_continuous("Age")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by age and year")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+    
+```
+
+
+Now, let's move on and examine with the basic relation between age and vocabulary scores in our data set:
+
+```{r plot1, echo=FALSE, cache=TRUE}
+
+# plotting the vocabulary scores by age and nativeness using a simple scatter plot
+   ggplot()+ geom_point(data=d,aes(x = age, y = vocab, color=nativeBorn), size=2, alpha=0.7)+
+  scale_x_continuous("Age")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by age and nativeness")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+
+```
+
+OK, this is obviously not very useful. There are just too many points!
+
+So, we can summarize the data and look at the averages. 
+
+```{r plot2, echo=FALSE, cache=TRUE}
+
+#make a tidy file where summarize the average vocabulary scores by age, gender and nativeness
+d_sum_by_age<- ddply(d, .(age, gender,nativeBorn), summarise, vocab = mean(vocab,na.rm=TRUE)) 
+d_sum_by_age <- na.omit(d_sum_by_age) # remove n/a
+
+# plot vocab by age
+ggplot()+ geom_point(data=d_sum_by_age,aes(x = age, y = vocab), size=2, alpha=0.7)+
+  scale_x_continuous("Age")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by age")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+```
+
+But what about being a native? Could this moderate the effect? Let's check this by adding a different color to the plot based on nativeness.
+
+```{r plot3, echo=FALSE, cache=TRUE}
+# plot vocab by age and nativeness
+ plot2 <- # save a plot
+   ggplot()+ geom_point(data=d_sum_by_age,aes(x = age, y = vocab, color=nativeBorn), size=2, alpha=0.7)+
+  scale_x_continuous("Age")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by age and nativeness")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+ plot2 # show the plot
+ 
+```
+ 
+What about gender? Does it affect the relationship between age and vocabulary size?
+ 
+```{r plot4, echo=FALSE, cache=TRUE} 
+
+ # What do you need to change to color code by Gender instead of nativeness?
+
+  plot2a <- # save a plot
+   ggplot()+ geom_point(data=d_sum_by_age,aes(x = age, y = vocab, color=gender), size=2, alpha=0.7)+
+  scale_x_continuous("Age")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by age and gender")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+ plot2a # show the plot
+
+```
+ 
+Now, we can make more informative plots by faceting:
+
+
+```{r plot5, echo=FALSE, cache=TRUE} 
+
+# facet by nativeness
+   plot3 <- # save a plot
+   ggplot()+ geom_point(data=d_sum_by_age,aes(x = age, y = vocab, color=gender), size=2, alpha=0.7)+ facet_grid(.~nativeBorn,scales = "free")+
+  scale_x_continuous("Age")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by age and gender")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+ plot3 # show the plot
+  
+ 
+  # or switch the faceting by gender:
+     plot3a <- # save a plot
+   ggplot()+ geom_point(data=d_sum_by_age,aes(x = age, y = vocab, color=nativeBorn), size=2, alpha=0.7)+ facet_grid(.~gender,scales = "free")+
+  scale_x_continuous("Age")+
+  scale_y_continuous("Vocabulary Score")+
+  ggtitle("Vocabulary by age and gender")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+ plot3a # show the plot
+ 
+```
+
+What do you see? Do nativeness and gender have similar effects?
+
+
+### Time to do some plotting yourself! :)
+
+
+1. Creat a new r code chunck called plot5
+
+2. In it, make a new file that summarizes the data frame by education, gender and nativeness
+
+3. Plot vocabulary scores by education and nativeness (same as plot2, but don't forget to change the name of the axis and the title!)
+
+4. Plot vocabulary scores by education and gender (same as plot2a, but don't forget to change the name of the axis and the title!)
+
+5. Facet these plots by either nativeness or gender (same as plot3 and plot3a, but don't forget to change the name of the axis and the title!)
+
+6. Choose one of your plots and change the size of the dots, their transperancy and the size of the text. 
+
+7. Choose one of your plots and change the shape of the point by adding "shape=XX". See the legend below for help.
+ 
+8. Choose the plot you made in (3), and try to make the shape of the point change according to nativness. 
+
+
+![](http://www.sthda.com/sthda/RDoc/images/points-symbols.png)
+
+
+You can also combine different plots to one grid using the "cowplot" package. For that, you'll need the plots you saved:
+
+```{r plot12, echo=FALSE, warning=FALSE, cache=TRUE}
+# create a figure with different plots, labeled A,B,C, one below the other
+full_fig <- plot_grid(plot3, plot3a, plot1, labels = "AUTO", ncol=1, nrow=3, align = 'v')
+
+full_fig # show the combined figure (you will probably need to expand the window to see)
+
+save_plot("fig.jpg", full_fig, base_height=6, base_width=6, ncol=1, nrow=3) # save the plot in the folder
+
+#when you open the file you created, you'll see it's not streched anymore :)
+```
+
+
+We can also check our idea about a correlation between the years of education and people's age. 
+
+```{r plot13, echo=FALSE, warning=FALSE, cache=TRUE}
+
+# summarize participants' education by their age
+ d_educ_by_age<- ddply(d, .(age, gender), summarise, educ= mean(educ,na.rm=TRUE)) 
+
+# plot education by age
+  ggplot()+ geom_line(data=d_educ_by_age,aes(x = age, y = educ, group=gender, color=gender), size=2, alpha=0.7)+
+  scale_x_continuous("Age")+
+  scale_y_continuous("Years of education")+
+  ggtitle("Years of education by age")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+  
+```
+
+You'll see that actually, the relationship is more complex than we thought: even though very young people (<20) indeed have less education, overall it seems like older people are less educated. This might have to do with having fewer opportunities for higher education in the past. Moreover, this gap is even bigger for women...
+
+## Analysis time!
+
+First, let's prepare our variables by centering the continous ones and setting up the contrasts.
+
+```{r prepare for regression, include=FALSE, cache=TRUE}
+
+# Before we start the analyses, it's best to center our continous variables
+d$c.age <- d$age - mean(d$age, na.rm=T)
+d$c.educ <- d$educ - mean(d$educ,na.rm=T)
+
+# and set our contrasts:
+
+# Gender:
+levels(d$gender) # check the levels of this variable
+contrasts(d$gender) <- c(0,1) # set female as basline
+contrasts(d$gender) # make sure this is what we did :)
+
+#NativeBorn
+# Now let's do the same for nativeBorn
+levels(d$nativeBorn) # check the levels of this variable
+contrasts(d$nativeBorn) <- c(1,0) # set natives as baseline
+contrasts(d$nativeBorn)
+```
+
+Now, let's make a model based on our predictions.
+
+**Note: We're not going to do model selection this time (mostly for the sake of time, and because it can take a while to find the model that actually converges and is justified by the data), but you're welcome to try other models yourself at home!**
+
+```{r regression, echo=FALSE, cache=TRUE}
+
+# regression model
+
+reg1<- lmer(vocab ~
+            c.age*nativeBorn*gender + c.educ*nativeBorn*gender+ (1|year),
+          data=d, REML=T)
+```
+
+### Adding p-values
+
+Because this model is based on a lot of data, we can use the normal approximation to caluclate p-values: Since the t-distribution converges to the z-distribution as degrees of freedom increase, this is like assuming infinite degrees of freedom. For reasonable sample sizes, this method appears not to be very anti-conservative (see Barr et al., 2013: <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3881361/>). That is, if we take the p-value to measure the probability of a false positive, this approximation produces a somewhat (but perhaps not alarmingly) higher false positive rate than the nominal 5% at p = 0.05. For our "big" dataset, this is acceptable.
+
+*(I also added a code at the end of this file with a way to caluclate p-values for small sample sizes.)*
+
+
+```{r p-values, echo=FALSE, cache=TRUE}
+#let's make a pretty table out of it
+reg1_table <- data.frame(coef(summary(reg1))) # save the coefficients to a data frame
+reg1_table$p <- 2 * (1 - pnorm(abs(reg1_table$t.value)))
+
+colnames(reg1_table) <- c("Estimate", "Std.Error", "t-value", "p-value") # add the column names 
+rownames(reg1_table) <- c("(Intercept)", "Age", "Nativeness (Non-native vs. Native)", "Gender (Male vs. Female)", "Years of Education", "Age X Nativeness","Age X Gender","Nativeness X Gender","Nativeness X Education","Education X Gender", "Age X Nativeness X Gender", "Education X Nativeness X Gender") # change the row names to be more informative (not just the variable name, but the full description)
+
+kable(reg1_table, digits = 6, caption = "Vocabulary score by age, education, nativeness and gender") # print the pretty table
+# NOTE: the title will only appear in the actual file after knitting
+
+```
+
+But what's actually going on? 
+
+It's fairly easy to understand the main effects of education, age, gender and nativeness:
+
+- Age is a significant positive predictor of vocab scores (higher age = higher score)
+- Nativeness is a significant negative predictor of vocab scores (non native = lower score than native)
+- Gender is a significant negative predictor of vocab scores (males = lower score than females)
+- Education is a significant positive predictor of vocab scores (higher education = higher score)
+
+
+But when it comes to the interactions (and especially, the triple interaction), things get messier. 
+
+We can try to use the sign of the interactions to understand our effects.
+
+For exmaple:
+- the effect of age is positive (higher age = higher score)
+- the effect of gender is negative (males = lower score)
+- the interaction between age and gender is negative (--> the positive effect of age on vocab score is smaller for males)
+
+But this is not trivial for everyone, and can be confusing. 
+
+*So - we plot the model using the "effects" package! :)*
+
+## Plotting the model
+
+First, let's confirm that we understood the main effects:
+
+```{r regression plot1, warning=FALSE, echo=FALSE, cache=TRUE}
+
+plot(effect("c.age", reg1))
+
+```
+
+```{r regression plot2,  warning=FALSE, echo=FALSE, cache=TRUE}
+
+plot(effect("c.educ", reg1))
+
+```
+
+```{r regression plot3, warning=FALSE, echo=FALSE, cache=TRUE}
+
+plot(effect("gender", reg1))
+
+```
+
+```{r regression plot4, warning=FALSE, echo=FALSE, cache=TRUE}
+
+plot(effect("nativeBorn", reg1))
+
+```
+
+Now let's plot the interactions:
+
+*Note: The name of the effect needs to be according to the order in the original model)*
+
+```{r regression plot5,  warning=FALSE, echo=FALSE, cache=TRUE}
+
+plot(effect("c.age*gender", reg1))
+
+```
+Indeed, we can see that the relationship between age and vocabulary scores is weaker (=smaller slope) for males.
+
+```{r regression plot6, warning=FALSE, echo=FALSE, cache=TRUE}
+
+plot(effect("c.age*nativeBorn", reg1))
+
+```
+
+It might be useful to plot these slopes from the model on top on the raw data. This is actually easy to do in ggplot: we can combine data from different files together. 
+
+```{r regression plot1 model + data, warning=FALSE, echo=FALSE, cache=TRUE}
+
+model_plot <- effect("c.age*nativeBorn", reg1, xlevels=15)
+model_plot <-as.data.frame(model_plot)
+model_plot$c.age <- model_plot$c.age +46 # make centered age uncentered again 
+model_plot$nativeBorn <- factor(model_plot$nativeBorn, levels=c("Non-native", "Native")) # make sure our variable is the same (you can check to see what happens if we don't do this...)
+
+
+ plot4 <- ggplot()+
+  geom_point(data=d_sum_by_age,aes(x = age, y = vocab, color=nativeBorn),lwd=2, alpha=0.4)+
+  geom_ribbon(data = model_plot, aes(x=c.age, ymin = lower, ymax = upper, fill = nativeBorn), alpha = 0.15)+
+  geom_line(data=model_plot,aes(c.age, fit, color=nativeBorn),lwd=3)+
+   scale_x_continuous("Age")+
+  scale_y_continuous("Mean vocabulary score")+
+  ggtitle("Mean vocabulary score by age and nativeness")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+
+ plot4
+
+```
+
+Great! We see that except for the fact that natives have higher scores, nativeness is changing the relationship between age and vocabulary scores (i.e., the slope is steeper for non-natives).
+
+### Plotting (and understanding) triple interactions
+
+```{r regression plot8, echo=FALSE, cache=TRUE}
+
+plot(effect("c.age*nativeBorn*gender", reg1))
+```
+
+This plot is actually not so clear and it's hard to see the differences, but the idea is that the significant relationship between age and gender (i.e., males showing a weaker relationship) is somewhat modluated by nativeness (so it is true only for the natives).
+
+Maybe we can try to plot the model AND the raw data together to get a better picture.
+
+```{r regression plot2 model+data, echo=FALSE, cache=TRUE}
+
+# save the model coefficients
+
+model_plot2 <- effect("c.age*nativeBorn*gender", reg1, xlevels=10)
+model_plot2 <-as.data.frame(model_plot2)
+model_plot2$c.age <- model_plot2$c.age +46 # make centered age uncentered again 
+
+ggplot()+
+  geom_point(data=d_sum_by_age,aes(x = age, y = vocab, color=gender),lwd=1, alpha=0.4)+ facet_grid(.~nativeBorn,scales = "free")+
+  geom_ribbon(data = model_plot2, aes(x=c.age, ymin = lower, ymax = upper, fill = gender), alpha = 0.15)+
+  geom_line(data=model_plot2,aes(c.age, fit, color=gender),lwd=3)+
+   scale_x_continuous("Age")+
+  scale_y_continuous("Mean vocabulary score")+
+  ggtitle("Mean vocabulary score by age, gender and nativeness")+
+  theme_classic()+
+  theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+
+```
+
+
+### Time to do some model plotting yourself! :)
+
+
+1. Creat a new r code chunck called regression plot7
+
+2. Plot the interaction between nativeness and gender
+
+3. Plot the interaction between nativeness and education
+
+4. Plot the interaction between gender and education
+
+5. Plot the triple interaction between gender, education and nativeness
+
+6. Plot the raw data + model estimates for one of the interactions above 
+
+7. Check: do the plots fit the model's output and the significance of the interactions?
+
+
+## Side note about contrasts for categorical variables:
+
+The "basic" coding schemes are:
+- *Dummy coding* = compares levels to a baseline level (this is done with 0's and 1's)
+- *Sum/deviation conding* = compares levels to the grand mean (this is done with -1's and 1's)
+
+There are *many* other coding schemes to make many more comparisons (even user-defined ones). You can check out this webpage for useful exmaples and coding matrices: <https://stats.idre.ucla.edu/r/library/r-library-contrast-coding-systems-for-categorical-variables/>
+
+Using different conding schemes asks different questions, and makes different comparisons. It will therefore yield different coefficients (estimates). 
+_But the overall model fit stays the same, and **the significance of the predictor remains the same**!!_
+
+If you want to be sure, let's rerun the same model after changing the contrasts of "nativeBorn" to c(-1,1) and check for yourself!
+
+```{r contrasts, echo=FALSE, cache=TRUE}
+
+# change the contrasts for nativeness so it's compared to the grand mean instead
+
+contrasts(d$nativeBorn) <- c(1,-1) # non-natives compared to the grand mean (instead of the reference level)
+
+# regression model
+
+reg2<- lmer(vocab ~
+            c.age*nativeBorn*gender + c.educ*nativeBorn*gender+ (1|year),
+          data=d, REML=T)
+
+
+#let's make a pretty table out of it
+reg2_table <- data.frame(coef(summary(reg2))) # save the coefficients to a data frame
+reg2_table$p <- 2 * (1 - pnorm(abs(reg2_table$t.value)))
+colnames(reg2_table) <- c("Estimate", "Std.Error", "t-value","p-value") # add the column names 
+rownames(reg2_table) <- c("(Intercept)", "Age", "Nativeness (Non-native vs. Native)", "Gender (Male vs. Female)", "Years of Education", "Age X Nativeness","Age X Gender","Nativeness X Gender","Nativeness X Education","Education X Gender", "Age X Nativeness X Gender", "Education X Nativeness X Gender") # change the row names to be more informative (not just the variable name, but the full description)
+
+# compare the tables 
+kable(reg1_table, digits = 6, caption = "Original model") # print the pretty table
+
+kable(reg2_table, digits = 6, caption = "Model with sum-coding") # print the pretty table
+
+```
+
+
+## Add conservative p-values to small models
+
+Finally, if you have a small data set (e.g., less than 30 participants, or very few observation per condition), you can use the *Kenward-Roger approximation* for estimating the degrees of freedom in a mixed model. This method is slightly more conservative.
+
+Let's try this using a model based on a smaller sample size (for example, with only part of the data from the last two years of data collection).
+
+**Note: If your model is not *that* small, this procedure might take a while to calculate and can be quite taxing for your computer.**
+
+
+```{r conservative p for small models, echo=FALSE, cache=TRUE}
+
+# sample 100 rows from the data collected in 2014
+small_d <- sample_n(subset(d, year %in% c(2012,2014)),100)
+small_d$c.age <- small_d$age - mean(small_d$age, na.rm=TRUE)
+
+# run some model
+small_reg <- lmer(vocab ~
+            c.age*nativeBorn + (1|year),
+            data=small_d, REML=F)
+
+small_reg1<- data.frame(coef(summary(small_reg)))
+
+# get p-values from the t-distribution using the t-values and approximated degrees of freedom in the Kenward-Roger approximation 
+df.KR <- get_ddf_Lb(small_reg, fixef(small_reg)) # calculte the degrees of freedom
+small_reg1$p.KR <- 2 * (1 - pt(abs(small_reg1$t.value), df.KR)) # calculate the p-value using the new df
+
+# let's also add the "normal" p-values, so you can see the difference 
+small_reg1$p.normal <- 2 * (1 - pnorm(abs(small_reg1$t.value)))
+
+
+#make a nice table
+colnames(small_reg1) <- c("Estimate", "Std.Error", "t-value", "p-value (KR)","p-value (normal)") # column names
+rownames(small_reg1) <- c("(Intercept)", "Age", "Nativeness (Non-native vs. Native)", "Age X Nativeness") # row names
+kable(small_reg1, digits = 6, caption = "Comparing p-values for small model", escape=FALSE) 
+```
+
+As you can see, using the KR is a bit more conservative (the p-values are slightly higher).
+
