@@ -1,7 +1,7 @@
 ---
-title: "R Ladies Data Visualization"
+title: "Data Visualization and Mixed Models"
 author: "Limor Raviv"
-date: "28 March 2019"
+date: "May 2021"
 output:
   html_document:
     df_print: paged
@@ -124,36 +124,59 @@ data("GSSvocab")
 
 summary(GSSvocab) # look at the data
 
+# Let's recode the variable "nativeborn"" to make the output more informative!
+
+levels(GSSvocab$nativeBorn) <- c("Non-native", "Native") # This is better than "yes"/"no"
+
+summary(GSSvocab)  ## re-summarise and look: levels of 'nativeBorn' are changed
+
+
+# Notice that ageGroup and educGroup are a binned variable based on age and educ
+# Since making continuous variables into categorical variables is not good practice (and also takes away from our model's power), we will not use them here.
+# Thus, we don't need all this data-- we just want really the non-binned variables - so let's remove it. 
+
+d<- GSSvocab[!is.na(GSSvocab$vocab),c(1:3,6:8)]  # Create a new data frame with only the wanted columns, remove all the lines where vocab score is n/a
+# Note that we also gave the data frame a shorter name (more convenient)
 
 ```
 
-Let's recode the variable "nativeborn"" to make the output more informative!
+
+### Predictions?
+
+Before we look at the data, what are your predictions? What do you think will affect vocabulary scores?
+
+**For each of these variables, write down: Do you think this variable matters? How so? Should it be a fixed effect or a random effect?**
+
+- year (of data collection)
+- gender
+- nativeBorn (in the USA)
+- age
+- educ (years of formal education)
+
+**Think: Do you expect any interactions?**
+
+For example, it's possible that being native to the US will moderate the effect of education and/or age.
+DO you think this relation will be further moderated by gender?
 
 
-```{r load_data_2, echo=FALSE, cache=TRUE}
 
-levels(GSSvocab$nativeBorn) <- c("Non-native", "Native") # Recoding data:  This is more informative than "yes"/"no", the original levels.
-summary(GSSvocab)  ## resummarise and look: levels of 'nativeBorn' are changed
+## Plotting the data
 
-# we don't need all this data-- we just want really the non-binned variables (for example, "Age"" but not "ageGroup"
+To examine our data, we can first plot it in different ways.
 
-#create a new data frame with only the wanted columns, remove all the lines where vocab score is n/a and give the data frame a shorter name (more convenient)
-d<- GSSvocab[!is.na(GSSvocab$vocab),c(1:3,6:8)] 
 
-```
-
-##Plotting in Base R
+###Plotting in Base R
 
 Using a basic plot, in base R, we can check that our data is normally distributed (this is a pre-condition for running many statistical analyses).
 
 ```{r plot1, echo=FALSE, cache=TRUE}
 
-hist(d$vocab, col = "blue") # note that we add the colour to make it easier to see the bars
+hist(d$vocab, col = "blue") # note that we add the color to make it easier to see the bars
 
 ```
 
 
-Pie charts are something people often want to make-- though, be careful when using them.  They are only good for visualizing big differences among few levels of data. For example, for highlighting how this sample mostly tested native-born individuals...
+Pie charts are something people often want to make-- though, be careful when using them. They are only good for visualizing big differences among few levels of data. For example, for highlighting how this sample mostly tested native-born individuals...
 
 ```{r plot2, echo=FALSE, cache=TRUE}
 
@@ -164,6 +187,7 @@ pie_p <- summary(d$nativeBorn)
 pie_p <- pie_p / sum(pie_p) 
 pie(pie_p)
 ```
+
 
 ## Plotting with ggplot
 
@@ -178,7 +202,7 @@ We will start by creating a boxplot using ggplot2() functions.
 ## turn the continuous age variable into a 'factor' -- an ordered list
 d$ageF <- as.factor(d$age)
 
-## use a subset of the data-- people 25 and under
+## for this, we will use a subset of the data-- people 25 and under
 ## this represents people in college + recently graduated
 ds <- d[d$age < 26, ]
 
@@ -189,7 +213,8 @@ ds <- na.omit(ds)
 summary(ds)
 ```
 
-Basic ggplot syntax:  
+Basic ggplot syntax:
+
 Start with the command ggplot(), specifying the data to be plotted, and the variables you want to pass to the plot inside the function aes(). These are 'aesthetics'-- things that change in the plot, like x values, and y values.  (Also: colors, groups of data, shapes, transparency...)
 
 Then, you tell the plot what type of graph to use with a second command-- a 'geom'. Here: geom_boxplot.
@@ -245,7 +270,9 @@ Try with some other geoms:
 p +
   geom_violin(draw_quantiles=c(.25,.5,.75)) + ## add a violin, with quantiles of the data added to it
   stat_summary(fun.y=mean, geom="point", size=2, color="red") ## also display the means as belly-buttons, using a summary function
-## I added all of these things inside the geom and summary commands. This means that all conditions will get the same type of function applied to them.
+
+## I added all of these things inside the geom and summary commands.
+## This means that all conditions will get the same type of function applied to them.
 ## All conditions will have quantiles, and points that are always red.
 ```
 
@@ -255,7 +282,8 @@ What about looking at the actual individual data points?
 p + geom_point()
 ```
 
-Those points were stacked on top of each other, which is why it looks like there are only a few data points by condition... we can instead 'jitter' them so we can get a sense of where there's more data. We can also make the points slightly transparent using alpha.
+Those points were stacked on top of each other, which is why it looks like there are only a few data points by condition...
+we can instead 'jitter' them so we can get a sense of where there's more data. We can also make the points slightly transparent using alpha. This will be much better!! 
 
 ```{r plot9, echo=FALSE, cache=TRUE} 
 p + geom_jitter(alpha=.1)
@@ -336,7 +364,7 @@ Or use a ribbon instead of the error bars:
 
 
 ```{r plot13, echo=FALSE, cache=TRUE}
-## we can also add the raw data points instead of error bars/ribbons: justd plot the summarized line on top on the full data!
+## we can also add the raw data points instead of error bars/ribbons: just plot the summarized line on top on the full data!
 #This really serves to emphasize the spread of the data. 
   ggplot(data=d_sum,aes(x = age, y = mVocab))+
     geom_line( size=2, alpha=0.7)+
@@ -349,32 +377,12 @@ Or use a ribbon instead of the error bars:
 # see that the lines look so different in the above two plots? That is because the y-axis scale changed!
 ```
 
-```{r plot14, echo=FALSE, cache=TRUE}
-## Final line graph option-- plot a smooth of the data instead of a summarized line.
-# This will provide a confidence band based on the entire data, using an underlying function.
-# We asked for 'loess' which is a sort of rolling average.
-  ggplot(data=ds,aes(x = age, y = vocab))+
-    geom_smooth(method='loess' )+
-    scale_x_continuous("Participant Age")+
-    scale_y_continuous("Vocabulary Score")+
-    ggtitle("Vocabulary by age")+
-    theme_classic()+
-    theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
-```
 
 Now, let's look at the trend for the full age range (going back to the original, yet cleaned, dateset d).
 We can also save the full plot in workspace to call up later.
 
-```{r plot15, echo=FALSE, cache=TRUE} 
-ggplot(data=d,aes(x = age, y = vocab))+
-    geom_smooth()+  
-    scale_x_continuous("Participant Age")+
-    scale_y_continuous("Vocabulary Score")+
-    ggtitle("Vocabulary by age")+
-    theme_classic()+
-    theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
+```{r plot14, echo=FALSE, cache=TRUE} 
 
-# now, let's save the full plot
 plot1<- ggplot(data=d,aes(x = age, y = vocab))+
     geom_smooth(color="blue", lwd=2)+  # change the color and line width
     geom_jitter(data=d,aes(y=vocab),alpha=.03)+
@@ -384,17 +392,20 @@ plot1<- ggplot(data=d,aes(x = age, y = vocab))+
     theme_classic()+
     theme(text = element_text(size = 15), axis.text.x = element_text(size=15), legend.text = element_text(size = 15))
 
-# and call it to disply it
+# and call it to display it
 plot1
+
 # And you can save it to a file
 ggsave("plot1.png")
 ```
 
 We can even examine the relationship between age and vocabulary scores over the years to make sure it's consistent. 
-To make these plots, facet by year.
-We'll skip the error bars/ smooths this time beacuse the panels also provide some sense of variability, and the plot will get too complex fast with more stuff in it.
 
-```{r plot16, echo=FALSE, warning=FALSE, cache=TRUE} 
+To make these plots, we will facet by year.
+
+We'll skip the error bars/ smooths this time because the panels also provide some sense of variability, and the plot will get too complex fast with more stuff in it.
+
+```{r plot15, echo=FALSE, warning=FALSE, cache=TRUE} 
 
 # summarize vocabulary by age and year 
  d_sum_by_year<- ddply(d, .(year, age), summarise, mVocab = mean(vocab,na.rm=TRUE)) 
@@ -418,7 +429,7 @@ But this is too hard to evaluate properly. It would be better to stack the lines
 Here, we also add the "group" variable to tell ggplot to give one line per year. You can check to see what happens if you remove this grouping!
 
 
-```{r plot17, echo=FALSE, warning=FALSE, cache=TRUE} 
+```{r plot16, echo=FALSE, warning=FALSE, cache=TRUE} 
   
 ggplot(data=d_sum_by_year,aes(x = age, y = mVocab, color=as.factor(year), group=year))+
   geom_line(size=1, alpha=0.6)+
@@ -433,7 +444,7 @@ ggplot(data=d_sum_by_year,aes(x = age, y = mVocab, color=as.factor(year), group=
 Here, we treated "year" as a categorical value instead of a continuous variable. This means that each year gets a different color. In our case, it's a bit too much (we have 20 different years) and actually quite confusing (because the years are continuous), but this could be useful in other occasions. 
 Instead, we can treat it as numeric, which will give each year a different hue of blue:
 
-```{r plot18, echo=FALSE, warning=FALSE, cache=TRUE} 
+```{r plot17, echo=FALSE, warning=FALSE, cache=TRUE} 
 
 # plot the relation between age and vocab by year
 ggplot(data=d_sum_by_year,aes(x = age, y = mVocab, color=as.numeric(year), group=year))+
@@ -448,7 +459,7 @@ ggplot(data=d_sum_by_year,aes(x = age, y = mVocab, color=as.numeric(year), group
 
 We can also highligh a specific year of interest using gg_highlight:
 
-```{r plot18a, echo=FALSE, warning=FALSE, cache=TRUE} 
+```{r plot18, echo=FALSE, warning=FALSE, cache=TRUE} 
 
 ggplot(data=d_sum_by_year,aes(x = age, y = mVocab, color=as.numeric(year), group=year))+
   geom_line(size=1, alpha=0.6)+
@@ -495,7 +506,7 @@ ggplot(data=d,aes(x = age, y = vocab, color=nativeBorn))+
 
 OK, this is obviously not very useful. There are just too many points!
  
-Try summarising the points and looking at the averages. 
+Try summarizing the points and looking at the averages. 
 
 
 ```{r plot20, echo=FALSE, cache=TRUE}
@@ -610,6 +621,7 @@ ani_plot <- plot3 +
   ease_aes('linear')
 
 # show the animated plot (on the right side bar)
+# this might take a minutes to run...
 ani_plot
 
 # And save your animation as a GIF
@@ -647,6 +659,7 @@ contrasts(d$nativeBorn)
 ```
 
 Now, let's make a model based on our predictions.
+
 We will run an (overly) simple model in terms of the random effects (the 1|year part) because it can take a while to figure this out.
 We'll also use the rule-of-thumb that t-value > 2 means a significant effect. 
 
@@ -654,9 +667,9 @@ We'll also use the rule-of-thumb that t-value > 2 means a significant effect.
 
 # regression model
 
-reg1<- lmer(vocab ~                                                  #dependant measure
+reg1<- lmer(vocab ~                             #dependent measure
               c.age*c.educ*nativeBorn*gender+   ## look at the combination of age, education, nativeness, and gender as fixed effects, and their interactions
-              (1|year),  ## year of mesurement is our random effect: the equivalent of a repeated measure in ANOVA
+              (1|year),  ## year of measurement is our random effect: the equivalent of a repeated measure in ANOVA
           data=d, REML=T)
 
 summary(reg1)
@@ -674,8 +687,9 @@ colnames(reg1_table) <- c("Estimate", "Std.Error", "t-value") # add the column n
 rownames(reg1_table) <- c("(Intercept)", "Age", "Years of Education", "Nativeness (Non-native vs. Native)", "Gender (Male vs. Female)", "Age X Education", "Age X Nativeness","Education X Nativeness","Age X Gender","Education X Gender","Nativeness X Gender", "Age X Education X Nativeness ","Age X Education X Gender","Age X Nativeness X Gender", "Education X Nativeness X Gender","Age X Education X Nativeness X Gender") # change the row names to be more informative (not just the variable name, but the full description)
 
 kable(reg1_table, digits = 6, caption = "Vocabulary score by age, education, nativeness and gender") # print the pretty table
-# NOTE: the title will only appear in the actual file after knitting
+
 ```
+
 
 But what's actually going on? 
 
@@ -687,17 +701,20 @@ It's fairly easy to understand the main effects of education, age, gender and na
 - Education is a significant positive predictor of vocab scores (higher education = higher score)
 
 
-But when it comes to the interactions, it's harder to interpret.
+But when it comes to the interactions (and especially, the triple interaction), it's harder to interpret.
 
 The sign of the interactions tells us about our effects.
 
-For example:
+We can try to use the sign of the interactions to understand our effects.
 
+For exmaple:
 - the effect of age is positive (higher age = higher score)
 - the effect of gender is negative (males = lower score)
-- the interaction between age and gender is negative ( --> the positive effect of age on vocab score is smaller for males)
+- the interaction between age and gender is negative (--> the positive effect of age on vocab score is smaller for males)
 
-But once we get to the triple interaction of age, education, and gender?? This gets hard to understand by just looking at the signs...
+But this is not trivial for everyone, and can be confusing.
+
+Also, once we get to the triple interaction of age, education, and gender, this gets much harder to understand by just looking at the signs...
 
 *So - we can plot the model using the "effects" package! :)*
 
@@ -731,7 +748,7 @@ plot(effect("nativeBorn", reg1))
 
 Now let's plot the interactions:
 
-*Note: When plotting effects you need to give the name of the effect in the same order as you wrote it into the model e.g. c.age BY gender. If you write it in a different order, e.g. gender BY c.age, it will not recognise this term and the plot will break *
+*Note: When plotting effects you need to give the name of the effect in the same order as you wrote it into the model e.g. c.age BY gender. If you write it in a different order, e.g. gender BY c.age, it will not recognize this term and the plot will break *
 
 ```{r regression plot5,  warning=FALSE, echo=FALSE, cache=TRUE}
 
@@ -747,7 +764,8 @@ plot(effect("c.age*nativeBorn", reg1))
 
 ```
 
-It might be useful to plot these slopes from the model on top on the raw data. This is very easy to do in ggplot: we can combine data from different files together. 
+It might be useful to plot these slopes from the model on top on the raw data.
+This is very easy to do in ggplot: we can combine data from different files together. 
 
 ```{r regression plot1 model + data, warning=FALSE, echo=FALSE, cache=TRUE}
 
@@ -781,7 +799,7 @@ Great! We see that except for the fact that natives have higher scores, nativene
 plot(effect("c.age*nativeBorn*gender", reg1))
 ```
 
-This plot is actually not so clear and it's hard to see the differences, but the idea is that the significant relationship between age and gender (i.e., males showing a weaker relationship) is somewhat modluated by nativeness (so it is true only for the natives).
+This plot is actually not so clear and it's hard to see the differences, but the idea is that the significant relationship between age and gender (i.e., males showing a weaker relationship) is somewhat modulated by nativeness (so it is true only for the natives).
 
 Maybe we can try to plot the model AND the raw data together to get a better picture.
 
@@ -824,3 +842,44 @@ ggplot()+
 
 7. Check: do the plots fit the model's output and the significance of the interactions?
 
+
+
+
+## Side note about contrasts for categorical variables:
+
+The "basic" coding schemes are:
+- *Dummy coding* = compares levels to a baseline level (this is done with 0's and 1's)
+- *Sum/deviation coding* = compares levels to the grand mean (this is done with -1's and 1's)
+
+There are *many* other coding schemes to make many more comparisons (even user-defined ones). You can check out this webpage for useful examples and coding matrices: <https://stats.idre.ucla.edu/r/library/r-library-contrast-coding-systems-for-categorical-variables/>
+
+Using different coding schemes asks different questions, and makes different comparisons. It will therefore yield different coefficients (estimates). 
+_But the overall model fit stays the same, and **the significance of the predictor remains the same**!!_
+
+If you want to be sure, let's rerun the same model after changing the contrasts of "nativeBorn" to c(-1,1) and check for yourself!
+
+```{r contrasts, echo=FALSE, cache=TRUE}
+
+# change the contrasts for nativeness so it's compared to the grand mean instead
+
+contrasts(d$nativeBorn) <- c(1,-1) # non-natives compared to the grand mean (instead of the reference level)
+
+# regression model
+
+reg2<- lmer(vocab ~
+            c.age*nativeBorn*gender + c.educ*nativeBorn*gender+ (1|year),
+          data=d, REML=T)
+
+
+#let's make a pretty table out of it
+reg2_table <- data.frame(coef(summary(reg2))) # save the coefficients to a data frame
+reg2_table$p <- 2 * (1 - pnorm(abs(reg2_table$t.value)))
+colnames(reg2_table) <- c("Estimate", "Std.Error", "t-value","p-value") # add the column names 
+rownames(reg2_table) <- c("(Intercept)", "Age", "Nativeness (Non-native vs. Native)", "Gender (Male vs. Female)", "Years of Education", "Age X Nativeness","Age X Gender","Nativeness X Gender","Nativeness X Education","Education X Gender", "Age X Nativeness X Gender", "Education X Nativeness X Gender") # change the row names to be more informative (not just the variable name, but the full description)
+
+# compare the tables 
+kable(reg1_table, digits = 6, caption = "Original model") # print the pretty table
+
+kable(reg2_table, digits = 6, caption = "Model with sum-coding") # print the pretty table
+
+```
